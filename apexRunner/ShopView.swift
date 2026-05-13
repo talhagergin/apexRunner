@@ -28,6 +28,7 @@ struct ShopView: View {
             VStack(spacing: 0) {
                 shopHeader
                 tabPicker.padding(.top, 12)
+                shopSummary.padding(.top, 12)
                 if selectedTab == 0 { skinGrid } else { skillList }
                 Spacer()
             }
@@ -91,6 +92,33 @@ struct ShopView: View {
         .padding(.vertical, 7)
         .background(Color.black.opacity(0.35))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var shopSummary: some View {
+        HStack(spacing: 10) {
+            summaryCell(title: "COINS", value: "\(store.totalCoins)", color: Color(red: 1.0, green: 0.85, blue: 0.0))
+            summaryCell(title: "SKINS", value: "\(store.purchasedSkinIds.count)/\(CharacterSkin.all.count)", color: Color(red: 0.0, green: 0.95, blue: 1.0))
+            summaryCell(title: "SKILLS", value: "\(store.purchasedSkillIds.count)/\(PassiveSkill.all.count)", color: Color(red: 0.2, green: 1.0, blue: 0.3))
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private func summaryCell(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.42))
+                .tracking(2)
+            Text(value)
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(color.opacity(0.18), lineWidth: 1))
     }
 
     // MARK: - Tab Picker
@@ -292,6 +320,10 @@ struct ShopView: View {
                 Text(skill.description)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.5))
+                Text(skillStatusText(skill))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(skill.color.opacity(owned ? 0.85 : 0.55))
+                    .tracking(1)
             }
 
             Spacer()
@@ -315,9 +347,18 @@ struct ShopView: View {
     @ViewBuilder
     private func skillActionButton(skill: PassiveSkill, owned: Bool, canAfford: Bool) -> some View {
         if owned {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 22))
-                .foregroundColor(skill.color)
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14, weight: .bold))
+                Text("ACTIVE")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .tracking(1)
+            }
+            .foregroundColor(skill.color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(skill.color.opacity(0.13))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else {
             Button {
                 if store.purchaseSkill(skill.id) {
@@ -359,6 +400,19 @@ struct ShopView: View {
         purchaseFeedback = msg
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation { purchaseFeedback = nil }
+        }
+    }
+
+    private func skillStatusText(_ skill: PassiveSkill) -> String {
+        switch skill.id {
+        case "magnet":
+            return "COIN RADIUS 1.0 -> 2.8"
+        case "headstart":
+            return "START SPEED +5 M/S"
+        case "saver":
+            return "FIRST HIT BLOCKED"
+        default:
+            return "PERMANENT"
         }
     }
 }

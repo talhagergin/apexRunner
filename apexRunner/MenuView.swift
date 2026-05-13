@@ -29,6 +29,18 @@ struct MenuView: View {
                 // Coin balance (top)
                 HStack {
                     Spacer()
+                    if store.goalStreak > 0 {
+                        HStack(spacing: 5) {
+                            Image(systemName: "flame.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("\(store.goalStreak)")
+                                .font(.system(size: 15, weight: .black, design: .rounded))
+                        }
+                        .foregroundColor(Color(red: 1.0, green: 0.55, blue: 0.18))
+                        .padding(.horizontal, 11).padding(.vertical, 7)
+                        .background(Color.black.opacity(0.30))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
                     HStack(spacing: 5) {
                         Image(systemName: "circle.fill")
                             .font(.system(size: 12))

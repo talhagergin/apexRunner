@@ -33,6 +33,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
     private var currentPhase: GamePhase = .menu
     private var currentLane: Int = 1
     private var currentSpeed: Float = 12.0
+    private var runBaseSpeed: Float = 12.0
     private var gameTime: Float = 0
     private var totalDistance: Float = 0
     private var lastUpdateTime: TimeInterval = 0
@@ -322,7 +323,8 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
     private func applySkills() {
         let store = GameProgressStore.shared
         coinPickupRadius = store.hasMagnet ? 2.8 : 1.0
-        currentSpeed     = store.hasHeadstart ? baseSpeed + 5 : baseSpeed
+        runBaseSpeed     = store.hasHeadstart ? baseSpeed + 5 : baseSpeed
+        currentSpeed     = runBaseSpeed
         saverUsed = false
     }
 
@@ -387,8 +389,8 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
             addEdge(to: root, x: -Float(roadW)/2 + 0.07, length: segL, r: 0.85, g: 0.85, b: 0.90, intensity: 3.0)
             addEdge(to: root, x:  Float(roadW)/2 - 0.07, length: segL, r: 0.85, g: 0.85, b: 0.90, intensity: 3.0)
         } else {
-            addEdge(to: root, x: -Float(roadW)/2 + 0.07, length: segL, r: 1.0, g: 0.10, b: 0.60, intensity: 6.5)
-            addEdge(to: root, x:  Float(roadW)/2 - 0.07, length: segL, r: 0.0, g: 0.88, b: 1.0,  intensity: 6.5)
+            addEdge(to: root, x: -Float(roadW)/2 + 0.07, length: segL, r: 0.85, g: 0.10, b: 0.45, intensity: 3.4)
+            addEdge(to: root, x:  Float(roadW)/2 - 0.07, length: segL, r: 0.0, g: 0.62, b: 0.78,  intensity: 3.4)
         }
 
         // Lane dividers
@@ -483,11 +485,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
 
     private func addCityscape(to parent: SCNNode, side: Float) {
         // Place 3-5 individual building boxes per segment side
-        let buildingCount = Int.random(in: 3...5)
+        let buildingCount = isMinimal ? Int.random(in: 3...5) : Int.random(in: 2...3)
         let spacing = segmentLength / Float(buildingCount)
 
         let neonColors: [(CGFloat, CGFloat, CGFloat)] = [
-            (0.0, 0.7, 1.0), (0.8, 0.0, 1.0), (1.0, 0.1, 0.5), (0.0, 1.0, 0.6)
+            (0.0, 0.42, 0.58), (0.48, 0.16, 0.68), (0.72, 0.12, 0.34), (0.10, 0.62, 0.38)
         ]
         let minimalColors: [(CGFloat, CGFloat, CGFloat)] = [
             (0.55, 0.55, 0.65), (0.45, 0.45, 0.55), (0.65, 0.65, 0.75), (0.50, 0.50, 0.60)
@@ -495,9 +497,9 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
 
         for i in 0..<buildingCount {
             let bw = Float.random(in: 3.0...6.5)
-            let bh = Float.random(in: 5...20)
+            let bh = isMinimal ? Float.random(in: 5...20) : Float.random(in: 4...14)
             let bd = Float.random(in: 2.5...5.5)
-            let xOff = side * Float.random(in: 9.0...14.0)
+            let xOff = side * (isMinimal ? Float.random(in: 9.0...14.0) : Float.random(in: 12.0...17.0))
             let zOff = -(segmentLength / 2) + spacing * Float(i) + Float.random(in: 0...(spacing * 0.7))
 
             let palette = isMinimal ? minimalColors : neonColors
@@ -523,21 +525,21 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
             // Neon cap on top
             let capGeom = SCNBox(width: CGFloat(bw + 0.2), height: 0.18, length: CGFloat(bd + 0.2), chamferRadius: 0)
             capGeom.materials = [makeMat(diffuse: UIColor.clear, emission: accentColor,
-                                          emissionIntensity: isMinimal ? 2.0 : 5.5,
+                                          emissionIntensity: isMinimal ? 2.0 : 2.4,
                                           metalness: 1.0, roughness: 0.0)]
             let cap = SCNNode(geometry: capGeom)
             cap.position = SCNVector3(xOff, bh + 0.09, zOff)
             parent.addChildNode(cap)
 
             // 1-3 window lights
-            for _ in 0..<Int.random(in: 1...3) {
+            for _ in 0..<(isMinimal ? Int.random(in: 1...3) : Int.random(in: 1...2)) {
                 let wx = xOff + Float.random(in: -bw * 0.3...bw * 0.3)
                 let wy = Float.random(in: bh * 0.2...bh * 0.75)
                 let wGeom = SCNBox(width: 0.55, height: 0.35, length: 0.12, chamferRadius: 0.04)
                 let wMat = SCNMaterial()
                 wMat.emission.contents = accentColor
-                let wIntensityLow: CGFloat  = isMinimal ? 1.5 : 3.0
-                let wIntensityHigh: CGFloat = isMinimal ? 3.0 : 5.0
+                let wIntensityLow: CGFloat  = isMinimal ? 1.5 : 1.2
+                let wIntensityHigh: CGFloat = isMinimal ? 3.0 : 2.4
                 wMat.emission.intensity = CGFloat.random(in: wIntensityLow...wIntensityHigh)
                 wMat.diffuse.contents = UIColor.clear
                 wGeom.materials = [wMat]
@@ -555,10 +557,10 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         root.position = SCNVector3(laneXPositions[lane], 0, z)  // straight: direct lane position
 
         let neonPalette: [(UIColor, CGFloat)] = [
-            (UIColor(red: 1.0, green: 0.10, blue: 0.40, alpha: 1.0), 8.0),
-            (UIColor(red: 0.0, green: 0.90, blue: 1.0, alpha: 1.0), 8.0),
-            (UIColor(red: 1.0, green: 0.85, blue: 0.0, alpha: 1.0), 7.0),
-            (UIColor(red: 0.55, green: 0.0, blue: 1.0, alpha: 1.0), 8.0)
+            (UIColor(red: 0.95, green: 0.18, blue: 0.28, alpha: 1.0), 5.2),
+            (UIColor(red: 0.15, green: 0.72, blue: 0.95, alpha: 1.0), 5.0),
+            (UIColor(red: 0.95, green: 0.72, blue: 0.18, alpha: 1.0), 4.8),
+            (UIColor(red: 0.66, green: 0.28, blue: 0.95, alpha: 1.0), 5.0)
         ]
         let minimalPalette: [(UIColor, CGFloat)] = [
             (UIColor(red: 0.9, green: 0.15, blue: 0.15, alpha: 1.0), 3.0),
@@ -569,7 +571,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         let palette = isMinimal ? minimalPalette : neonPalette
         let (color, intensity) = palette[Int.random(in: 0..<palette.count)]
 
-        let mat = makeMat(diffuse: color.withAlphaComponent(isMinimal ? 0.5 : 0.25),
+        let mat = makeMat(diffuse: color.withAlphaComponent(isMinimal ? 0.5 : 0.42),
                           emission: color, emissionIntensity: intensity,
                           metalness: 0.8, roughness: isMinimal ? 0.4 : 0.1)
 
@@ -805,7 +807,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
             let dx = abs(charX - obs.position.x)   // both in world space (runnerNode.x == 0)
             let dz = abs(charZ - obs.position.z)
             if dx < hitThresholdX && dz < hitThresholdZ {
-                handleCollision(); return
+                handleCollision(with: obs); return
             }
             if dx < nearMissX && dz < nearMissZ && obs.name != "nearMissed" {
                 obs.name = "nearMissed"
@@ -829,6 +831,12 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         coins.removeAll { coin in
             let dx = abs(charX - coin.position.x)
             let dz = abs(charZ - coin.position.z)
+
+            if GameProgressStore.shared.hasMagnet, dx < coinPickupRadius, dz < 5.0 {
+                coin.position.x += (charX - coin.position.x) * 0.18
+                coin.position.z += (charZ - coin.position.z) * 0.05
+            }
+
             guard dx < coinPickupRadius && dz < coinPickupRadius else { return false }
             coin.runAction(SCNAction.sequence([SCNAction.scale(to: 1.8, duration: 0.1),
                                                SCNAction.fadeOut(duration: 0.15)])) {
@@ -864,9 +872,10 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         }
     }
 
-    private func handleCollision() {
+    private func handleCollision(with obstacle: SCNNode) {
         guard isRunning, !isDead else { return }
         if gameState.hasShield {
+            consumeObstacle(obstacle)
             DispatchQueue.main.async { [weak self] in
                 self?.gameState.activePowerUps.removeValue(forKey: PowerUpType.shield.rawValue)
                 self?.shieldAuraNode?.removeFromParentNode(); self?.shieldAuraNode = nil
@@ -875,6 +884,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         }
         if GameProgressStore.shared.hasSaver && !saverUsed {
             saverUsed = true
+            consumeObstacle(obstacle)
             DispatchQueue.main.async { [weak self] in
                 self?.gameState.showSaverWarning = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.gameState.showSaverWarning = false }
@@ -904,6 +914,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
     }
 
+    private func consumeObstacle(_ obs: SCNNode) {
+        destroyObstacle(obs)
+        obstacles.removeAll { $0 === obs }
+    }
+
     // MARK: - Game Loop
 
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
@@ -916,7 +931,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         let level = gameState.currentLevel
         let boostFactor: Float = gameState.hasBoost ? 1.5 : 1.0
         currentSpeed = min(
-            (baseSpeed + gameTime * level.speedGrowthRate) * boostFactor,
+            (runBaseSpeed + gameTime * level.speedGrowthRate) * boostFactor,
             level.maxSpeed * boostFactor
         )
 
@@ -927,10 +942,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         let snap = totalDistance; let score = Int(snap / 8.0); let spd = currentSpeed
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.gameState.distanceMeters = snap
-            self.gameState.updateLevel(distance: snap)
-            self.gameState.score = score + self.gameState.coinCount * 10
-            self.gameState.currentSpeed = spd
+            self.gameState.updateRunProgress(distance: snap, distanceScore: score, speed: spd)
             self.gameState.tickPowerUps(delta: delta)
             if score > 0, score % 50 == 0, score != self.lastHapticScore {
                 self.lastHapticScore = score

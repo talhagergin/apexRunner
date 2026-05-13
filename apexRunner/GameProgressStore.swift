@@ -137,6 +137,7 @@ final class GameProgressStore {
     private(set) var purchasedSkinIds: Set<String> = ["default"]
     private(set) var purchasedSkillIds: Set<String> = []
     private(set) var selectedTheme: String = "neon"   // "neon" | "minimal"
+    private(set) var goalStreak: Int = 0
 
     var selectedSkin: CharacterSkin { CharacterSkin.find(selectedSkinId) }
 
@@ -144,6 +145,7 @@ final class GameProgressStore {
         totalCoins        = UserDefaults.standard.integer(forKey: "gp.coins")
         selectedSkinId    = UserDefaults.standard.string(forKey: "gp.skin")   ?? "default"
         selectedTheme     = UserDefaults.standard.string(forKey: "gp.theme")  ?? "neon"
+        goalStreak        = UserDefaults.standard.integer(forKey: "gp.goalStreak")
         purchasedSkinIds  = Set(UserDefaults.standard.stringArray(forKey: "gp.skins")  ?? ["default"])
         purchasedSkillIds = Set(UserDefaults.standard.stringArray(forKey: "gp.skills") ?? [])
         purchasedSkinIds.insert("default")
@@ -159,6 +161,22 @@ final class GameProgressStore {
     func addCoins(_ n: Int) {
         totalCoins += n
         UserDefaults.standard.set(totalCoins, forKey: "gp.coins")
+    }
+
+    @discardableResult
+    func finishRunGoal(completed: Bool) -> Int {
+        guard completed else {
+            goalStreak = 0
+            UserDefaults.standard.set(goalStreak, forKey: "gp.goalStreak")
+            return 0
+        }
+
+        goalStreak += 1
+        let bonus = min(goalStreak, 5) * 2
+        totalCoins += bonus
+        UserDefaults.standard.set(goalStreak, forKey: "gp.goalStreak")
+        UserDefaults.standard.set(totalCoins, forKey: "gp.coins")
+        return bonus
     }
 
     // MARK: Skins

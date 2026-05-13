@@ -65,6 +65,35 @@ struct GameLevel: Equatable {
     }
 }
 
+enum RunGoalKind: String, Equatable {
+    case distance
+    case coins
+    case combo
+    case level
+}
+
+struct RunGoal: Equatable {
+    let kind: RunGoalKind
+    let title: String
+    let target: Int
+    let rewardCoins: Int
+    var progress: Int = 0
+    var isCompleted: Bool = false
+
+    var progressText: String { "\(min(progress, target))/\(target)" }
+    var progressFraction: Float { min(Float(progress) / Float(target), 1) }
+
+    static func makeForRun() -> RunGoal {
+        let goals: [RunGoal] = [
+            RunGoal(kind: .distance, title: "RUN 500M", target: 500, rewardCoins: 8),
+            RunGoal(kind: .coins, title: "COLLECT 12", target: 12, rewardCoins: 10),
+            RunGoal(kind: .combo, title: "COMBO 8", target: 8, rewardCoins: 12),
+            RunGoal(kind: .level, title: "REACH LVL 3", target: 3, rewardCoins: 15)
+        ]
+        return goals.randomElement() ?? goals[0]
+    }
+}
+
 @Observable
 final class GameState {
     var phase: GamePhase = .menu
@@ -72,6 +101,9 @@ final class GameState {
     var distanceMeters: Float = 0
     var currentSpeed: Float = 12.0
     var highScore: Int = UserDefaults.standard.integer(forKey: "apexRunner.highScore")
+    private var distanceScore: Int = 0
+    private var bonusScore: Int = 0
+    var streakBonusCoins: Int = 0
 
     // Combo & multiplier
     var comboCount: Int = 0
@@ -85,6 +117,8 @@ final class GameState {
     var currentLevel: GameLevel = .level(1)
     var levelProgress: Float = 0
     var showLevelUp: Bool = false
+    var runGoal: RunGoal = .makeForRun()
+    var showGoalComplete: Bool = false
 
     // Near-miss feedback
     var showNearMiss: Bool = false
@@ -104,6 +138,9 @@ final class GameState {
 
     func startGame() {
         score = 0
+        distanceScore = 0
+        bonusScore = 0
+        streakBonusCoins = 0
         distanceMeters = 0
         currentSpeed = 12.0
         comboCount = 0
@@ -112,6 +149,8 @@ final class GameState {
         currentLevel = .level(1)
         levelProgress = 0
         showLevelUp = false
+        runGoal = .makeForRun()
+        showGoalComplete = false
         showComboUp = false
         showNearMiss = false
         showSaverWarning = false
@@ -122,6 +161,7 @@ final class GameState {
     func triggerGameOver() {
         // Persist coins earned this run
         GameProgressStore.shared.addCoins(coinCount)
+        streakBonusCoins = GameProgressStore.shared.finishRunGoal(completed: runGoal.isCompleted)
         if score > highScore {
             highScore = score
             UserDefaults.standard.set(highScore, forKey: "apexRunner.highScore")
@@ -144,10 +184,49 @@ final class GameState {
         SoundManager.shared.play(.milestone)
     }
 
+    func updateRunProgress(distance: Float, distanceScore: Int, speed: Float) {
+        distanceMeters = distance
+        self.distanceScore = distanceScore
+        currentSpeed = speed
+        updateLevel(distance: distance)
+        updateGoalProgress()
+        recalculateScore()
+    }
+
+    private func updateGoalProgress() {
+        guard !runGoal.isCompleted else { return }
+
+        switch runGoal.kind {
+        case .distance:
+            runGoal.progress = Int(distanceMeters)
+        case .coins:
+            runGoal.progress = coinCount
+        case .combo:
+            runGoal.progress = comboCount
+        case .level:
+            runGoal.progress = currentLevel.number
+        }
+
+        guard runGoal.progress >= runGoal.target else { return }
+        runGoal.progress = runGoal.target
+        runGoal.isCompleted = true
+        coinCount += runGoal.rewardCoins
+        showGoalComplete = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            self?.showGoalComplete = false
+        }
+        SoundManager.shared.play(.milestone)
+    }
+
+    private func recalculateScore() {
+        score = distanceScore + bonusScore
+    }
+
     // MARK: - Combo
 
     func incrementCombo() {
         comboCount += 1
+        updateGoalProgress()
         let newMult = multiplierFor(comboCount)
         if newMult > scoreMultiplier {
             scoreMultiplier = newMult
@@ -177,14 +256,17 @@ final class GameState {
 
     func collectCoin() {
         coinCount += 1
-        score += 10 * scoreMultiplier
+        bonusScore += 10 * scoreMultiplier
+        updateGoalProgress()
+        recalculateScore()
         SoundManager.shared.play(.coinCollect)
     }
 
     // MARK: - Near Miss
 
     func triggerNearMiss() {
-        score += 3 * scoreMultiplier
+        bonusScore += 3 * scoreMultiplier
+        recalculateScore()
         showNearMiss = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
             self?.showNearMiss = false

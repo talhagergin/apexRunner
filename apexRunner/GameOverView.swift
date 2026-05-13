@@ -90,6 +90,9 @@ struct GameOverView: View {
                             .opacity(appeared ? 1 : 0)
                     }
 
+                    runContractCard
+                        .opacity(appeared ? 1 : 0)
+
                     // Buttons
                     VStack(spacing: 12) {
                         // Retry
@@ -156,6 +159,47 @@ struct GameOverView: View {
     }
 
     // MARK: - Coins Earned Card
+
+    private var runContractCard: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill((gameState.runGoal.isCompleted ? Color.green : Color.white).opacity(0.14))
+                    .frame(width: 48, height: 48)
+                Image(systemName: gameState.runGoal.isCompleted ? "checkmark.seal.fill" : "target")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(gameState.runGoal.isCompleted ? Color(red: 0.25, green: 1.0, blue: 0.45) : Color.white.opacity(0.55))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(gameState.runGoal.isCompleted ? "CONTRACT CLEARED" : "CONTRACT MISSED")
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .tracking(3)
+                Text(gameState.runGoal.title)
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundColor(.white.opacity(0.86))
+                Text(gameState.runGoal.isCompleted ? "Streak \(store.goalStreak)  +\(gameState.streakBonusCoins) bonus" : "Streak reset")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(gameState.runGoal.isCompleted ? Color(red: 1.0, green: 0.85, blue: 0.0) : .white.opacity(0.42))
+                    .tracking(1)
+            }
+
+            Spacer()
+
+            Text(gameState.runGoal.progressText)
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundColor(.white.opacity(0.72))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke((gameState.runGoal.isCompleted ? Color.green : Color.white).opacity(0.18), lineWidth: 1))
+        )
+        .padding(.horizontal, 20)
+    }
 
     private var coinsEarnedCard: some View {
         HStack(spacing: 14) {
