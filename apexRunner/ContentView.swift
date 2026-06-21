@@ -10,9 +10,14 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // Game scene always present in background
-            GameSceneView(gameState: gameState)
+            Color(red: 0.02, green: 0.01, blue: 0.06)
                 .ignoresSafeArea()
+
+            if gameState.phase != .menu {
+                GameSceneView(gameState: gameState)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
 
             // Overlay UI based on current phase
             Group {

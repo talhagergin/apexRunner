@@ -94,6 +94,59 @@ struct RunGoal: Equatable {
     }
 }
 
+enum RiskGateType: String, CaseIterable, Equatable {
+    case surge = "SURGE"
+    case blackout = "BLACKOUT"
+    case ghost = "GHOST"
+    case mirror = "MIRROR"
+    case jackpot = "JACKPOT"
+    case overload = "OVERLOAD"
+
+    var assetName: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .surge: return "SURGE"
+        case .blackout: return "BLACKOUT"
+        case .ghost: return "GHOST"
+        case .mirror: return "MIRROR"
+        case .jackpot: return "JACKPOT"
+        case .overload: return "OVERLOAD"
+        }
+    }
+
+    var effectText: String {
+        switch self {
+        case .surge: return "Coins x2, speed up"
+        case .blackout: return "Low vision, contract x3"
+        case .ghost: return "One extra save"
+        case .mirror: return "Controls reversed"
+        case .jackpot: return "Coin burst"
+        case .overload: return "Power-ups x2"
+        }
+    }
+
+    var duration: Float {
+        switch self {
+        case .ghost, .jackpot: return 0
+        default: return 18
+        }
+    }
+
+    var coinMultiplier: Int {
+        switch self {
+        case .surge: return 2
+        case .blackout: return 3
+        default: return 1
+        }
+    }
+}
+
+struct ActiveRiskGate: Equatable {
+    let type: RiskGateType
+    var remaining: Float
+}
+
 @Observable
 final class GameState {
     var phase: GamePhase = .menu
@@ -119,6 +172,10 @@ final class GameState {
     var showLevelUp: Bool = false
     var runGoal: RunGoal = .makeForRun()
     var showGoalComplete: Bool = false
+    var activeRiskGate: ActiveRiskGate?
+    var lastRiskGateTitle: String = ""
+    var showRiskGateToast: Bool = false
+    var ghostSaves: Int = 0
 
     // Near-miss feedback
     var showNearMiss: Bool = false
@@ -151,6 +208,10 @@ final class GameState {
         showLevelUp = false
         runGoal = .makeForRun()
         showGoalComplete = false
+        activeRiskGate = nil
+        lastRiskGateTitle = ""
+        showRiskGateToast = false
+        ghostSaves = 0
         showComboUp = false
         showNearMiss = false
         showSaverWarning = false
@@ -222,6 +283,54 @@ final class GameState {
         score = distanceScore + bonusScore
     }
 
+    // MARK: - Risk Gates
+
+    var coinValueMultiplier: Int {
+        activeRiskGate?.type.coinMultiplier ?? 1
+    }
+
+    var isMirrorActive: Bool {
+        activeRiskGate?.type == .mirror
+    }
+
+    var isBlackoutActive: Bool {
+        activeRiskGate?.type == .blackout
+    }
+
+    var hasOverload: Bool {
+        activeRiskGate?.type == .overload
+    }
+
+    func activateRiskGate(_ type: RiskGateType) {
+        lastRiskGateTitle = type.title
+        showRiskGateToast = true
+
+        switch type {
+        case .ghost:
+            ghostSaves += 1
+            activeRiskGate = nil
+        case .jackpot:
+            coinCount += 8
+            bonusScore += 80 * scoreMultiplier
+            updateGoalProgress()
+            recalculateScore()
+            activeRiskGate = nil
+        default:
+            activeRiskGate = ActiveRiskGate(type: type, remaining: type.duration)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            self?.showRiskGateToast = false
+        }
+        SoundManager.shared.play(.milestone)
+    }
+
+    func consumeGhostSaveIfAvailable() -> Bool {
+        guard ghostSaves > 0 else { return false }
+        ghostSaves -= 1
+        return true
+    }
+
     // MARK: - Combo
 
     func incrementCombo() {
@@ -256,7 +365,7 @@ final class GameState {
 
     func collectCoin() {
         coinCount += 1
-        bonusScore += 10 * scoreMultiplier
+        bonusScore += 10 * scoreMultiplier * coinValueMultiplier
         updateGoalProgress()
         recalculateScore()
         SoundManager.shared.play(.coinCollect)
@@ -276,7 +385,7 @@ final class GameState {
     // MARK: - Power-ups
 
     func activatePowerUp(_ type: PowerUpType) {
-        activePowerUps[type.rawValue] = type.duration
+        activePowerUps[type.rawValue] = type.duration * (hasOverload ? 2 : 1)
         SoundManager.shared.play(.milestone)
     }
 
@@ -287,6 +396,11 @@ final class GameState {
             if activePowerUps[key]! <= 0 {
                 activePowerUps.removeValue(forKey: key)
             }
+        }
+
+        if var gate = activeRiskGate {
+            gate.remaining -= delta
+            activeRiskGate = gate.remaining > 0 ? gate : nil
         }
     }
 

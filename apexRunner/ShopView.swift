@@ -298,8 +298,11 @@ struct ShopView: View {
     }
 
     private func skillRow(_ skill: PassiveSkill) -> some View {
-        let owned     = store.purchasedSkillIds.contains(skill.id)
-        let canAfford = store.totalCoins >= skill.price
+        let level = store.skillLevel(skill.id)
+        let owned = level > 0
+        let isMaxed = level >= skill.maxLevel
+        let cost = store.skillCost(skill)
+        let canAfford = store.totalCoins >= cost
 
         return HStack(spacing: 14) {
             ZStack {
@@ -324,11 +327,15 @@ struct ShopView: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .foregroundColor(skill.color.opacity(owned ? 0.85 : 0.55))
                     .tracking(1)
+                Text("LEVEL \(level)/\(skill.maxLevel)")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(.white.opacity(0.42))
+                    .tracking(1)
             }
 
             Spacer()
 
-            skillActionButton(skill: skill, owned: owned, canAfford: canAfford)
+            skillActionButton(skill: skill, level: level, isMaxed: isMaxed, cost: cost, canAfford: canAfford)
         }
         .padding(14)
         .background(
@@ -345,12 +352,12 @@ struct ShopView: View {
     }
 
     @ViewBuilder
-    private func skillActionButton(skill: PassiveSkill, owned: Bool, canAfford: Bool) -> some View {
-        if owned {
+    private func skillActionButton(skill: PassiveSkill, level: Int, isMaxed: Bool, cost: Int, canAfford: Bool) -> some View {
+        if isMaxed {
             HStack(spacing: 5) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 14, weight: .bold))
-                Text("ACTIVE")
+                Text("MAX")
                     .font(.system(size: 11, weight: .black, design: .rounded))
                     .tracking(1)
             }
@@ -361,9 +368,9 @@ struct ShopView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         } else {
             Button {
-                if store.purchaseSkill(skill.id) {
+                if store.purchaseOrUpgradeSkill(skill.id) {
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                    showFeedback("✅ \(skill.displayName) activated!")
+                    showFeedback(level == 0 ? "✅ \(skill.displayName) activated!" : "✅ \(skill.displayName) upgraded!")
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     showFeedback("❌ Not enough coins")
@@ -374,7 +381,7 @@ struct ShopView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(LinearGradient(colors: [.yellow, .orange],
                                                          startPoint: .top, endPoint: .bottom))
-                    Text("\(skill.price)")
+                    Text("\(cost)")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundColor(canAfford ? .white : .white.opacity(0.3))
                 }

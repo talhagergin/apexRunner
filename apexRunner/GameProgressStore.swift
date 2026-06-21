@@ -107,20 +107,24 @@ struct PassiveSkill: Identifiable {
     let price: Int
     let icon: String
     let color: Color
+    let maxLevel: Int
 
     static let all: [PassiveSkill] = [
         PassiveSkill(id: "magnet", displayName: "MAGNET",
                      description: "Coin attraction radius ×3",
                      price: 80, icon: "arrow.down.circle.fill",
-                     color: Color(red: 1.0, green: 0.85, blue: 0.0)),
+                     color: Color(red: 1.0, green: 0.85, blue: 0.0),
+                     maxLevel: 3),
         PassiveSkill(id: "headstart", displayName: "HEADSTART",
                      description: "Begin each run at boosted speed",
                      price: 60, icon: "hare.fill",
-                     color: Color(red: 1.0, green: 0.4, blue: 0.0)),
+                     color: Color(red: 1.0, green: 0.4, blue: 0.0),
+                     maxLevel: 3),
         PassiveSkill(id: "saver", displayName: "LIFE SAVER",
                      description: "Survive the first collision",
                      price: 120, icon: "heart.fill",
-                     color: Color(red: 1.0, green: 0.15, blue: 0.4)),
+                     color: Color(red: 1.0, green: 0.15, blue: 0.4),
+                     maxLevel: 2),
     ]
 
     static func find(_ id: String) -> PassiveSkill? { all.first { $0.id == id } }
@@ -136,6 +140,7 @@ final class GameProgressStore {
     private(set) var selectedSkinId: String = "default"
     private(set) var purchasedSkinIds: Set<String> = ["default"]
     private(set) var purchasedSkillIds: Set<String> = []
+    private(set) var skillLevels: [String: Int] = [:]
     private(set) var selectedTheme: String = "neon"   // "neon" | "minimal"
     private(set) var goalStreak: Int = 0
 
@@ -148,7 +153,11 @@ final class GameProgressStore {
         goalStreak        = UserDefaults.standard.integer(forKey: "gp.goalStreak")
         purchasedSkinIds  = Set(UserDefaults.standard.stringArray(forKey: "gp.skins")  ?? ["default"])
         purchasedSkillIds = Set(UserDefaults.standard.stringArray(forKey: "gp.skills") ?? [])
+        skillLevels       = UserDefaults.standard.dictionary(forKey: "gp.skillLevels") as? [String: Int] ?? [:]
         purchasedSkinIds.insert("default")
+        for id in purchasedSkillIds where skillLevels[id] == nil {
+            skillLevels[id] = 1
+        }
     }
 
     // MARK: Theme
@@ -198,13 +207,30 @@ final class GameProgressStore {
 
     // MARK: Skills
     func purchaseSkill(_ id: String) -> Bool {
+        purchaseOrUpgradeSkill(id)
+    }
+
+    func purchaseOrUpgradeSkill(_ id: String) -> Bool {
         guard let skill = PassiveSkill.find(id) else { return false }
-        guard totalCoins >= skill.price, !purchasedSkillIds.contains(id) else { return false }
-        totalCoins -= skill.price
+        let currentLevel = skillLevel(id)
+        guard currentLevel < skill.maxLevel else { return false }
+        let cost = skillCost(skill)
+        guard totalCoins >= cost else { return false }
+        totalCoins -= cost
         purchasedSkillIds.insert(id)
+        skillLevels[id] = currentLevel + 1
         UserDefaults.standard.set(totalCoins, forKey: "gp.coins")
         UserDefaults.standard.set(Array(purchasedSkillIds), forKey: "gp.skills")
+        UserDefaults.standard.set(skillLevels, forKey: "gp.skillLevels")
         return true
+    }
+
+    func skillLevel(_ id: String) -> Int {
+        skillLevels[id] ?? 0
+    }
+
+    func skillCost(_ skill: PassiveSkill) -> Int {
+        skill.price * (skillLevel(skill.id) + 1)
     }
 
     var hasMagnet:    Bool { purchasedSkillIds.contains("magnet") }

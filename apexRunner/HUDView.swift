@@ -33,6 +33,16 @@ struct HUDView: View {
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
 
+            if gameState.showRiskGateToast {
+                HStack {
+                    riskToast
+                    Spacer()
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 6)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+
             Spacer()
 
             // ── Saver warning ────────────────────────────────────
@@ -74,6 +84,7 @@ struct HUDView: View {
         .animation(.easeInOut(duration: 0.3), value: gameState.showNearMiss)
         .animation(.easeInOut(duration: 0.3), value: gameState.showSaverWarning)
         .animation(.spring(response: 0.35, dampingFraction: 0.75), value: gameState.showLevelUp)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: gameState.showRiskGateToast)
         .animation(.spring(response: 0.35, dampingFraction: 0.75), value: gameState.showGoalComplete)
         .animation(.spring(response: 0.4), value: gameState.activePowerUps.count)
     }
@@ -82,7 +93,7 @@ struct HUDView: View {
 
     private var scorePill: some View {
         VStack(alignment: .leading, spacing: 2) {
-                Text("SCORE")
+            Text("SCORE")
                 .font(.system(size: 8, weight: .bold, design: .rounded))
                 .foregroundColor(.white.opacity(0.45))
                 .tracking(2)
@@ -253,6 +264,31 @@ struct HUDView: View {
                 .stroke(Color(red: 1.0, green: 0.85, blue: 0.0).opacity(0.42), lineWidth: 1.5)))
     }
 
+    private var riskToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.0))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(gameState.lastRiskGateTitle)
+                    .font(.system(size: 11, weight: .black, design: .rounded))
+                    .foregroundColor(.white.opacity(0.86))
+                    .tracking(2)
+                if let gate = gameState.activeRiskGate {
+                    Text(gate.type.effectText)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.58))
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)))
+    }
+
     private var comboBadge: some View {
         VStack(spacing: 3) {
             Text("COMBO")
@@ -387,6 +423,20 @@ struct HUDView: View {
                 Text("×\(gameState.scoreMultiplier)")
                     .font(.system(size: 11, weight: .black, design: .rounded))
                     .foregroundColor(multiplierColor)
+            }
+            if let gate = gameState.activeRiskGate {
+                Divider().frame(height: 12).overlay(Color.white.opacity(0.18))
+                Text(gate.type.title)
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.0))
+                Text(String(format: "%.0fs", gate.remaining))
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+            } else if gameState.ghostSaves > 0 {
+                Divider().frame(height: 12).overlay(Color.white.opacity(0.18))
+                Text("GHOST \(gameState.ghostSaves)")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundColor(Color(red: 0.5, green: 1.0, blue: 1.0))
             }
         }
         .padding(.horizontal, 12)

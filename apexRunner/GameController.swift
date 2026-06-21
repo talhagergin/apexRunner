@@ -38,9 +38,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
     private var totalDistance: Float = 0
     private var lastUpdateTime: TimeInterval = 0
     private var nextSegmentZ: Float = 0
+    private var nextGateDistance: Float = 220
     private var lastHapticScore: Int = 0
     private var coinPickupRadius: Float = 1.0
     private var saverUsed = false
+    private var saverCharges = 0
 
     // MARK: - Gesture
     private var gestureStartX: CGFloat = 0
@@ -72,6 +74,7 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
     private var obstacles: [SCNNode] = []
     private var coins: [SCNNode] = []
     private var powerUpNodes: [SCNNode] = []
+    private var gateNodes: [SCNNode] = []
 
     // MARK: - Init
     init(gameState: GameState) {
@@ -322,10 +325,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
 
     private func applySkills() {
         let store = GameProgressStore.shared
-        coinPickupRadius = store.hasMagnet ? 2.8 : 1.0
-        runBaseSpeed     = store.hasHeadstart ? baseSpeed + 5 : baseSpeed
+        coinPickupRadius = 1.0 + Float(store.skillLevel("magnet")) * 0.85
+        runBaseSpeed     = baseSpeed + Float(store.skillLevel("headstart")) * 3.0
         currentSpeed     = runBaseSpeed
         saverUsed = false
+        saverCharges = store.skillLevel("saver")
     }
 
     // MARK: - Camera
@@ -756,6 +760,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
             let seg = createSegment(atZ: nextSegmentZ)
             scene.rootNode.addChildNode(seg); segments.append(seg)
             if nextSegmentZ < -50 {
+                let projectedDistance = -nextSegmentZ
+                if projectedDistance >= nextGateDistance {
+                    spawnRiskGatePair(centerZ: nextSegmentZ)
+                    nextGateDistance += 250
+                }
                 spawnObstacles(centerZ: nextSegmentZ)
                 spawnCoins(centerZ: nextSegmentZ)
                 spawnPowerUps(centerZ: nextSegmentZ)
@@ -779,6 +788,68 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         powerUpNodes.removeAll { n in
             guard n.position.z > charZ + cleanupDistance else { return false }
             n.removeFromParentNode(); return true
+        }
+        gateNodes.removeAll { n in
+            guard n.position.z > charZ + cleanupDistance else { return false }
+            n.removeFromParentNode(); return true
+        }
+    }
+
+    private func spawnRiskGatePair(centerZ: Float) {
+        let options = RiskGateType.allCases.shuffled().prefix(2)
+        let lanes = [0, 2]
+        for (idx, type) in options.enumerated() {
+            let gate = createRiskGate(type: type, lane: lanes[idx], atZ: centerZ - 2)
+            scene.rootNode.addChildNode(gate)
+            gateNodes.append(gate)
+        }
+    }
+
+    private func createRiskGate(type: RiskGateType, lane: Int, atZ z: Float) -> SCNNode {
+        let root = SCNNode()
+        root.name = "gate:\(type.rawValue)"
+        root.position = SCNVector3(laneXPositions[lane], 2.35, z)
+
+        let plane = SCNPlane(width: 3.6, height: 3.6)
+        let mat = SCNMaterial()
+        mat.diffuse.contents = UIImage(named: type.assetName)
+        mat.emission.contents = UIImage(named: type.assetName)
+        mat.emission.intensity = isMinimal ? 0.25 : 0.75
+        mat.isDoubleSided = true
+        plane.materials = [mat]
+
+        let imageNode = SCNNode(geometry: plane)
+        imageNode.constraints = [SCNBillboardConstraint()]
+        root.addChildNode(imageNode)
+
+        let baseColor = gateColor(type)
+        let ring = SCNTorus(ringRadius: 1.15, pipeRadius: 0.035)
+        ring.materials = [makeMat(diffuse: UIColor.clear,
+                                  emission: baseColor,
+                                  emissionIntensity: isMinimal ? 2.0 : 3.5,
+                                  metalness: 1.0,
+                                  roughness: 0.0)]
+        let ringNode = SCNNode(geometry: ring)
+        ringNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+        ringNode.position = SCNVector3(0, -1.45, 0)
+        ringNode.runAction(SCNAction.repeatForever(SCNAction.rotateBy(x: 0, y: 0, z: CGFloat.pi * 2, duration: 2.4)))
+        root.addChildNode(ringNode)
+
+        root.runAction(SCNAction.repeatForever(SCNAction.sequence([
+            SCNAction.moveBy(x: 0, y: 0.14, z: 0, duration: 0.7),
+            SCNAction.moveBy(x: 0, y: -0.14, z: 0, duration: 0.7)
+        ])))
+        return root
+    }
+
+    private func gateColor(_ type: RiskGateType) -> UIColor {
+        switch type {
+        case .surge: return UIColor(red: 0.1, green: 0.75, blue: 1.0, alpha: 1)
+        case .blackout: return UIColor(red: 0.48, green: 0.14, blue: 0.9, alpha: 1)
+        case .ghost: return UIColor(red: 0.4, green: 1.0, blue: 1.0, alpha: 1)
+        case .mirror: return UIColor(red: 0.95, green: 0.22, blue: 1.0, alpha: 1)
+        case .jackpot: return UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 1)
+        case .overload: return UIColor(red: 1.0, green: 0.24, blue: 0.08, alpha: 1)
         }
     }
 
@@ -828,7 +899,8 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         }
 
         // Coins
-        coins.removeAll { coin in
+        var collectedCoins: [SCNNode] = []
+        for coin in coins {
             let dx = abs(charX - coin.position.x)
             let dz = abs(charZ - coin.position.z)
 
@@ -837,20 +909,25 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
                 coin.position.z += (charZ - coin.position.z) * 0.05
             }
 
-            guard dx < coinPickupRadius && dz < coinPickupRadius else { return false }
+            guard dx < coinPickupRadius && dz < coinPickupRadius else { continue }
+            collectedCoins.append(coin)
             coin.runAction(SCNAction.sequence([SCNAction.scale(to: 1.8, duration: 0.1),
                                                SCNAction.fadeOut(duration: 0.15)])) {
                 coin.removeFromParentNode()
             }
             DispatchQueue.main.async { [weak self] in self?.gameState.collectCoin() }
-            return true
+        }
+        if !collectedCoins.isEmpty {
+            coins.removeAll { coin in collectedCoins.contains { $0 === coin } }
         }
 
         // Power-ups
-        powerUpNodes.removeAll { node in
+        var collectedPowerUps: [SCNNode] = []
+        for node in powerUpNodes {
             let dx = abs(charX - node.position.x)
             let dz = abs(charZ - node.position.z)
-            guard dx < 1.2 && dz < 1.2 else { return false }
+            guard dx < 1.2 && dz < 1.2 else { continue }
+            collectedPowerUps.append(node)
             if let typeName = node.name, let type = PowerUpType(rawValue: typeName) {
                 node.removeFromParentNode()
                 DispatchQueue.main.async { [weak self] in
@@ -860,7 +937,30 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                 }
             }
-            return true
+        }
+        if !collectedPowerUps.isEmpty {
+            powerUpNodes.removeAll { node in collectedPowerUps.contains { $0 === node } }
+        }
+
+        var collectedGateType: RiskGateType?
+        for node in gateNodes {
+            let dx = abs(charX - node.position.x)
+            let dz = abs(charZ - node.position.z)
+            guard dx < 1.15 && dz < 1.5 else { continue }
+            if let name = node.name,
+               let raw = name.split(separator: ":").last,
+               let type = RiskGateType(rawValue: String(raw)) {
+                collectedGateType = type
+                break
+            }
+        }
+        if let type = collectedGateType {
+            gateNodes.forEach { $0.removeFromParentNode() }
+            gateNodes.removeAll()
+            DispatchQueue.main.async { [weak self] in
+                self?.gameState.activateRiskGate(type)
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+            }
         }
 
         // Clean auras when power-ups expire
@@ -882,14 +982,20 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
             }
             UINotificationFeedbackGenerator().notificationOccurred(.warning); return
         }
-        if GameProgressStore.shared.hasSaver && !saverUsed {
+        if saverCharges > 0 {
             saverUsed = true
+            saverCharges -= 1
             consumeObstacle(obstacle)
             DispatchQueue.main.async { [weak self] in
                 self?.gameState.showSaverWarning = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.gameState.showSaverWarning = false }
             }
             UINotificationFeedbackGenerator().notificationOccurred(.warning); return
+        }
+        if gameState.consumeGhostSaveIfAvailable() {
+            consumeObstacle(obstacle)
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
         }
         isDead = true; isRunning = false
         DispatchQueue.main.async { [weak self] in self?.gameState.resetCombo() }
@@ -930,9 +1036,10 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         gameTime += delta
         let level = gameState.currentLevel
         let boostFactor: Float = gameState.hasBoost ? 1.5 : 1.0
+        let riskSpeedFactor: Float = gameState.activeRiskGate?.type == .surge ? 1.18 : 1.0
         currentSpeed = min(
-            (runBaseSpeed + gameTime * level.speedGrowthRate) * boostFactor,
-            level.maxSpeed * boostFactor
+            (runBaseSpeed + gameTime * level.speedGrowthRate) * boostFactor * riskSpeedFactor,
+            level.maxSpeed * boostFactor * riskSpeedFactor
         )
 
         let dist = currentSpeed * delta
@@ -950,7 +1057,18 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
                 SoundManager.shared.play(.milestone)
             }
         }
+        updateRiskVisuals()
         updateRoad(); checkCollisions(); updateCamera()
+    }
+
+    private func updateRiskVisuals() {
+        guard gameState.isBlackoutActive else {
+            scene.fogStartDistance = isMinimal ? 55 : 45
+            scene.fogEndDistance = isMinimal ? 100 : 85
+            return
+        }
+        scene.fogStartDistance = 18
+        scene.fogEndDistance = 38
     }
 
     // MARK: - Lane Switching
@@ -963,7 +1081,11 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         case .changed:
             guard !gestureFired else { return }
             let diff = gesture.location(in: gesture.view).x - gestureStartX
-            if abs(diff) > 28 { gestureFired = true; switchLane(direction: diff > 0 ? 1 : -1) }
+            if abs(diff) > 28 {
+                gestureFired = true
+                let direction = diff > 0 ? 1 : -1
+                switchLane(direction: gameState.isMirrorActive ? -direction : direction)
+            }
         default: break
         }
     }
@@ -1002,14 +1124,14 @@ final class GameController: NSObject, SCNSceneRendererDelegate {
         applySkills(); applySkin()
         isRunning = true; isDead = false
         lastUpdateTime = 0; gameTime = 0; totalDistance = 0
-        lastHapticScore = 0; currentLane = 1; nextSegmentZ = 0
+        lastHapticScore = 0; currentLane = 1; nextSegmentZ = 0; nextGateDistance = 220
         SoundManager.shared.startAmbient()
     }
 
     private func stopAndReset() {
         isRunning = false
-        [segments, obstacles, coins, powerUpNodes].forEach { $0.forEach { $0.removeFromParentNode() } }
-        segments.removeAll(); obstacles.removeAll(); coins.removeAll(); powerUpNodes.removeAll()
+        [segments, obstacles, coins, powerUpNodes, gateNodes].forEach { $0.forEach { $0.removeFromParentNode() } }
+        segments.removeAll(); obstacles.removeAll(); coins.removeAll(); powerUpNodes.removeAll(); gateNodes.removeAll()
         clearPowerUpVisuals()
         runnerNode.position = SCNVector3(0, 0, 0)   // always x=0 on straight road
         characterNode.removeAllActions()
